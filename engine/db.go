@@ -69,6 +69,10 @@ func Open(opts Options) (*DB, error) {
 		_ = f.Close()
 		return nil, err
 	}
+	if err := db.logFile.Truncate(db.writeOffset); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("truncate log file: %w", err)
+	}
 	return db, nil
 }
 
@@ -110,17 +114,16 @@ func (db *DB) Get(key string) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 	rec, _, err := db.readRecordAt(entry.offset)
-	db.mu.RUnlock()
 	if err != nil {
+		db.mu.RUnlock()
 		return nil, err
 	}
 	if rec.Type != recordTypePut {
+		db.mu.RUnlock()
 		return nil, ErrKeyNotFound
 	}
-
-	db.mu.Lock()
 	db.cache.put(key, rec.Value)
-	db.mu.Unlock()
+	db.mu.RUnlock()
 	return cloneBytes(rec.Value), nil
 }
 
@@ -216,7 +219,7 @@ func (db *DB) Compact() error {
 func (db *DB) appendRecord(rec logRecord) (int64, error) {
 	offset := db.writeOffset
 	encoded := encodeRecord(rec)
-	n, err := db.logFile.Write(encoded)
+	n, err := db.logFile.WriteAt(encoded, offset)
 	if err != nil {
 		return 0, fmt.Errorf("append record: %w", err)
 	}

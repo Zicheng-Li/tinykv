@@ -1,6 +1,9 @@
 package engine
 
-import "container/list"
+import (
+	"container/list"
+	"sync"
+)
 
 type cacheValue struct {
 	key   string
@@ -11,6 +14,7 @@ type lruCache struct {
 	capacity int
 	items    map[string]*list.Element
 	order    *list.List
+	mu       sync.Mutex
 }
 
 func newLRU(capacity int) *lruCache {
@@ -28,6 +32,9 @@ func (c *lruCache) get(key string) ([]byte, bool) {
 	if c == nil {
 		return nil, false
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	elem, ok := c.items[key]
 	if !ok {
 		return nil, false
@@ -41,6 +48,9 @@ func (c *lruCache) put(key string, value []byte) {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if elem, ok := c.items[key]; ok {
 		elem.Value = cacheValue{key: key, value: cloneBytes(value)}
 		c.order.MoveToFront(elem)
@@ -63,6 +73,9 @@ func (c *lruCache) remove(key string) {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	elem, ok := c.items[key]
 	if !ok {
 		return
@@ -70,4 +83,3 @@ func (c *lruCache) remove(key string) {
 	c.order.Remove(elem)
 	delete(c.items, key)
 }
-
