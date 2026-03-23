@@ -73,6 +73,69 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestSnapshotAndRestoreEndpoints(t *testing.T) {
+	handler := newStandaloneHandler(t)
+
+	putResp, _ := performHandlerRequest(t, handler, http.MethodPut, "/kv/name", "tinykv")
+	if putResp.Code != http.StatusNoContent {
+		t.Fatalf("unexpected PUT status: %d", putResp.Code)
+	}
+	putResp, _ = performHandlerRequest(t, handler, http.MethodPut, "/kv/color", "blue")
+	if putResp.Code != http.StatusNoContent {
+		t.Fatalf("unexpected PUT status: %d", putResp.Code)
+	}
+
+	snapshotResp, snapshotBody := performHandlerRequestBytes(t, handler, http.MethodGet, "/snapshot", nil)
+	if snapshotResp.Code != http.StatusOK {
+		t.Fatalf("unexpected snapshot status: %d", snapshotResp.Code)
+	}
+	if !strings.Contains(snapshotResp.Header().Get("Content-Type"), "application/octet-stream") {
+		t.Fatalf("unexpected snapshot content type: %q", snapshotResp.Header().Get("Content-Type"))
+	}
+
+	putResp, _ = performHandlerRequest(t, handler, http.MethodPut, "/kv/name", "changed")
+	if putResp.Code != http.StatusNoContent {
+		t.Fatalf("unexpected overwrite status: %d", putResp.Code)
+	}
+	delResp, _ := performHandlerRequest(t, handler, http.MethodDelete, "/kv/color", "")
+	if delResp.Code != http.StatusNoContent {
+		t.Fatalf("unexpected delete status: %d", delResp.Code)
+	}
+
+	restoreResp, _ := performHandlerRequestBytes(t, handler, http.MethodPost, "/restore", snapshotBody)
+	if restoreResp.Code != http.StatusNoContent {
+		t.Fatalf("unexpected restore status: %d", restoreResp.Code)
+	}
+
+	getResp, getBody := performHandlerRequest(t, handler, http.MethodGet, "/kv/name", "")
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("unexpected restored GET status: %d", getResp.Code)
+	}
+	if string(getBody) != "tinykv" {
+		t.Fatalf("unexpected restored value: %q", string(getBody))
+	}
+
+	getResp, getBody = performHandlerRequest(t, handler, http.MethodGet, "/kv/color", "")
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("unexpected restored color GET status: %d", getResp.Code)
+	}
+	if string(getBody) != "blue" {
+		t.Fatalf("unexpected restored color value: %q", string(getBody))
+	}
+}
+
+func TestRestoreEndpointRejectsInvalidSnapshot(t *testing.T) {
+	handler := newStandaloneHandler(t)
+
+	resp, body := performHandlerRequest(t, handler, http.MethodPost, "/restore", "not-a-snapshot")
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d", resp.Code)
+	}
+	if !strings.Contains(string(body), "invalid snapshot") {
+		t.Fatalf("unexpected error body: %q", string(body))
+	}
+}
+
 func TestClusterProxyWriteToLeader(t *testing.T) {
 	fixture := newClusterFixture(t, 1)
 
@@ -239,8 +302,13 @@ func (f *clusterFixture) url(nodeID string) string {
 
 func performHandlerRequest(t *testing.T, handler http.Handler, method, path, body string) (*httptest.ResponseRecorder, []byte) {
 	t.Helper()
+	return performHandlerRequestBytes(t, handler, method, path, []byte(body))
+}
 
-	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+func performHandlerRequestBytes(t *testing.T, handler http.Handler, method, path string, body []byte) (*httptest.ResponseRecorder, []byte) {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	payload, err := io.ReadAll(resp.Body)

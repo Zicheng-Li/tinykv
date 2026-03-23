@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -258,6 +259,89 @@ func TestOpenTruncatesPartialRecordTail(t *testing.T) {
 	}
 }
 
+func TestSnapshotAndRestore(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "source.log")
+	source, err := Open(DefaultOptions(sourcePath))
+	if err != nil {
+		t.Fatalf("open source db: %v", err)
+	}
+	defer source.Close()
+
+	if err := source.Put("a", []byte("1")); err != nil {
+		t.Fatalf("put a: %v", err)
+	}
+	if err := source.Put("b", []byte("2")); err != nil {
+		t.Fatalf("put b: %v", err)
+	}
+	if err := source.Delete("b"); err != nil {
+		t.Fatalf("delete b: %v", err)
+	}
+	if err := source.Put("c", []byte("3")); err != nil {
+		t.Fatalf("put c: %v", err)
+	}
+	if err := source.Put("a", []byte("4")); err != nil {
+		t.Fatalf("update a: %v", err)
+	}
+
+	var snapshot bytes.Buffer
+	if err := source.Snapshot(&snapshot); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	restorePath := filepath.Join(t.TempDir(), "restore.log")
+	restore, err := Open(DefaultOptions(restorePath))
+	if err != nil {
+		t.Fatalf("open restore db: %v", err)
+	}
+	if err := restore.Put("stale", []byte("value")); err != nil {
+		t.Fatalf("put stale: %v", err)
+	}
+	if err := restore.Restore(bytes.NewReader(snapshot.Bytes())); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if err := restore.Close(); err != nil {
+		t.Fatalf("close restored db: %v", err)
+	}
+
+	restore, err = Open(DefaultOptions(restorePath))
+	if err != nil {
+		t.Fatalf("reopen restored db: %v", err)
+	}
+	defer restore.Close()
+
+	assertValue(t, restore, "a", "4")
+	assertValue(t, restore, "c", "3")
+
+	_, err = restore.Get("b")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Fatalf("b should not exist after restore, got: %v", err)
+	}
+	_, err = restore.Get("stale")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Fatalf("restore should replace old data, got: %v", err)
+	}
+}
+
+func TestRestoreRejectsInvalidSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.log")
+	db, err := Open(DefaultOptions(path))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Put("safe", []byte("value")); err != nil {
+		t.Fatalf("put safe: %v", err)
+	}
+
+	err = db.Restore(bytes.NewBufferString("not-a-snapshot"))
+	if !errors.Is(err, ErrInvalidSnapshot) {
+		t.Fatalf("want ErrInvalidSnapshot, got: %v", err)
+	}
+
+	assertValue(t, db, "safe", "value")
+}
+
 func TestConcurrentCacheHits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.log")
 	opts := DefaultOptions(path)
@@ -295,4 +379,16 @@ func TestConcurrentCacheHits(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func assertValue(t *testing.T, db *DB, key, want string) {
+	t.Helper()
+
+	got, err := db.Get(key)
+	if err != nil {
+		t.Fatalf("get %s: %v", key, err)
+	}
+	if string(got) != want {
+		t.Fatalf("unexpected value for %s: %q", key, string(got))
+	}
 }

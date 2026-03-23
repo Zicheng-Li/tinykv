@@ -17,6 +17,7 @@ Current focus:
 - compaction for rewriting live keys
 - concurrent access protection in the storage engine
 - HTTP API for KV operations
+- snapshot / restore support
 - static cluster membership
 - shard routing abstraction
 - leader/follower role abstraction per shard
@@ -27,7 +28,6 @@ Current focus:
 ### Not Implemented Yet
 
 - TTL
-- snapshot / restore
 - dynamic cluster membership
 - quorum-based replication
 - Raft leader election
@@ -38,8 +38,8 @@ Current focus:
 
 ## Project Layout
 
-- `engine/`: local storage engine, WAL, index rebuild, cache, compaction
-- `server/`: HTTP API, cluster-aware routing, forwarding, replication hooks
+- `engine/`: local storage engine, WAL, index rebuild, cache, compaction, snapshot / restore
+- `server/`: HTTP API, cluster-aware routing, forwarding, replication hooks, snapshot endpoints
 - `cluster/`: membership, shard routing, replica roles, peer HTTP client
 - `cmd/tinykv/`: executable entrypoint
 
@@ -54,6 +54,11 @@ Current focus:
   - success: `200 OK`
   - response body: raw value bytes
 - `DELETE /kv/{key}`
+  - success: `204 No Content`
+- `GET /snapshot`
+  - returns a binary snapshot of the current local node state
+- `POST /restore`
+  - request body: raw snapshot bytes previously created by `GET /snapshot`
   - success: `204 No Content`
 - `GET /healthz`
   - success: `200 OK`
@@ -80,6 +85,8 @@ Example requests:
 curl -i -X PUT --data 'world' http://127.0.0.1:8080/kv/hello
 curl -i http://127.0.0.1:8080/kv/hello
 curl -i -X DELETE http://127.0.0.1:8080/kv/hello
+curl -o backup.snapshot http://127.0.0.1:8080/snapshot
+curl -i -X POST --data-binary @backup.snapshot http://127.0.0.1:8080/restore
 curl -i http://127.0.0.1:8080/healthz
 ```
 
@@ -131,6 +138,7 @@ curl -i http://127.0.0.1:8081/cluster/route/hello
 curl -i -X PUT --data 'world' http://127.0.0.1:8082/kv/hello
 curl -i http://127.0.0.1:8081/kv/hello
 curl -i http://127.0.0.1:8082/kv/hello
+curl -o node-a.snapshot http://127.0.0.1:8081/snapshot
 ```
 
 ## Phase 2 Behavior
@@ -142,6 +150,7 @@ The current Phase 2 layer is intentionally simple:
 - follower nodes accept replicated writes from the leader
 - client writes sent to non-leader nodes are proxied to the leader
 - replication is best-effort and synchronous
+- snapshot / restore is currently node-local administration, not a cluster-wide consistent snapshot
 
 This is a useful abstraction layer for Phase 3, but it is not a consensus system yet.
 
@@ -151,7 +160,7 @@ This is a useful abstraction layer for Phase 3, but it is not a consensus system
 - replication can become inconsistent if a follower is unavailable during a write
 - membership is static and configured at startup
 - there is no TTL eviction yet
-- there is no snapshot / restore API yet
+- restoring a snapshot in cluster mode only replaces the local node state
 
 ## Testing
 
@@ -165,6 +174,6 @@ go test -race ./...
 Recommended next implementation order:
 
 1. TTL
-2. snapshot / restore
-3. stronger cluster write guarantees
+2. stronger cluster write guarantees
+3. cluster-aware snapshot coordination
 4. Phase 3 Raft-based replication

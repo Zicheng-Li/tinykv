@@ -35,6 +35,8 @@ func NewHandler(db *engine.DB, opts Options) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handler.handleHealth)
+	mux.HandleFunc("/snapshot", handler.handleSnapshot)
+	mux.HandleFunc("/restore", handler.handleRestore)
 	mux.HandleFunc("/kv", handler.handleKV)
 	mux.HandleFunc("/kv/", handler.handleKV)
 	mux.HandleFunc("/cluster/membership", handler.handleMembership)
@@ -64,6 +66,38 @@ func (h *Handler) handleMembership(w http.ResponseWriter, r *http.Request) {
 		summary = h.cluster.Summary()
 	}
 	writeJSON(w, summary)
+}
+
+func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, "GET")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="tinykv.snapshot"`)
+	if err := h.db.Snapshot(w); err != nil {
+		http.Error(w, "create snapshot failed", http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, "POST")
+		return
+	}
+	defer r.Body.Close()
+
+	if err := h.db.Restore(r.Body); err != nil {
+		switch {
+		case errors.Is(err, engine.ErrInvalidSnapshot):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, "restore snapshot failed", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) handleRoute(w http.ResponseWriter, r *http.Request) {
