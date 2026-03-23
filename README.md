@@ -1,16 +1,50 @@
 # TinyKV
 
-TinyKV is a small Go-based key-value store project that is being built in phases.
+TinyKV is a Go-based key-value store prototype built step by step from a single-node storage engine toward a distributed KV system.
 
-Current focus:
+Current scope:
 
-- a durable single-node KV engine
-- an HTTP API for reads and writes
-- a static Phase 2 cluster layer with sharding, forwarding, and best-effort replication
+- durable single-node KV storage
+- HTTP API for reads, writes, snapshots, and restore
+- static cluster membership, sharding, and leader/follower routing
+- benchmark artifacts and charts that can be reproduced locally
 
-## Current Status
+## Highlights
 
-### Implemented
+- Storage engine: `PUT / GET / DELETE`, WAL recovery, compaction, concurrent access safety, snapshot / restore
+- Service layer: HTTP API for KV operations plus cluster inspection endpoints
+- Cluster layer: static membership, shard routing, leader/follower abstraction, node-to-node forwarding, best-effort replication
+- Performance snapshot: up to `48.3k ops/s` in the current single-node HTTP benchmark with `p95` latency near `1.0-1.15 ms` at concurrency `32`
+
+## Benchmark Snapshot
+
+<p align="center">
+  <img src="docs/bench/throughput.svg" alt="TinyKV HTTP throughput benchmark" />
+  <img src="docs/bench/latency-p95.svg" alt="TinyKV HTTP p95 latency benchmark" />
+</p>
+
+Quick benchmark takeaways from the current run:
+
+- `PUT`: up to `47,384 ops/s`, `p95 = 1.038 ms`
+- `GET`: up to `47,990 ops/s`, `p95 = 1.151 ms`
+- `MIXED 80/20`: up to `48,316.5 ops/s`, `p95 = 1.026 ms`
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Client["Client / Postman / curl"] --> API["HTTP API"]
+  API --> Router["Request Routing"]
+  Router --> Engine["Local Engine"]
+  Router --> Cluster["Cluster Membership + Sharding + Leader/Follower"]
+  Cluster --> Peer["Peer HTTP Client"]
+  Peer --> Peers["Other TinyKV Nodes"]
+  Engine --> Index["In-memory Index + LRU Cache"]
+  Engine --> WAL["WAL Log"]
+  Engine --> Snap["Snapshot / Restore"]
+```
+
+## Implemented
 
 - single-node `PUT / GET / DELETE`
 - WAL-based persistence and recovery
@@ -25,7 +59,7 @@ Current focus:
 - best-effort replication to follower replicas
 - cluster inspection endpoints
 
-### Not Implemented Yet
+## Not Implemented Yet
 
 - TTL
 - dynamic cluster membership
@@ -42,36 +76,11 @@ Current focus:
 - `server/`: HTTP API, cluster-aware routing, forwarding, replication hooks, snapshot endpoints
 - `cluster/`: membership, shard routing, replica roles, peer HTTP client
 - `cmd/tinykv/`: executable entrypoint
+- `cmd/tinykvbench/`: reproducible HTTP benchmark and chart generator
 
-## HTTP API
+## Quick Start
 
-### Single-Node KV Endpoints
-
-- `PUT /kv/{key}`
-  - request body: raw value bytes
-  - success: `204 No Content`
-- `GET /kv/{key}`
-  - success: `200 OK`
-  - response body: raw value bytes
-- `DELETE /kv/{key}`
-  - success: `204 No Content`
-- `GET /snapshot`
-  - returns a binary snapshot of the current local node state
-- `POST /restore`
-  - request body: raw snapshot bytes previously created by `GET /snapshot`
-  - success: `204 No Content`
-- `GET /healthz`
-  - success: `200 OK`
-  - response body: `ok`
-
-### Cluster Debug Endpoints
-
-- `GET /cluster/membership`
-  - returns the local node view of cluster membership, shard count, and replication factor
-- `GET /cluster/route/{key}`
-  - returns the shard route for a key, including the leader and follower replicas
-
-## Run In Single-Node Mode
+### Run In Single-Node Mode
 
 ```bash
 go run ./cmd/tinykv \
@@ -90,7 +99,7 @@ curl -i -X POST --data-binary @backup.snapshot http://127.0.0.1:8080/restore
 curl -i http://127.0.0.1:8080/healthz
 ```
 
-## Run In Static Cluster Mode
+### Run In Static Cluster Mode
 
 All nodes must start with the same:
 
@@ -141,7 +150,35 @@ curl -i http://127.0.0.1:8082/kv/hello
 curl -o node-a.snapshot http://127.0.0.1:8081/snapshot
 ```
 
-## Phase 2 Behavior
+## HTTP API
+
+### KV Endpoints
+
+- `PUT /kv/{key}`
+  - request body: raw value bytes
+  - success: `204 No Content`
+- `GET /kv/{key}`
+  - success: `200 OK`
+  - response body: raw value bytes
+- `DELETE /kv/{key}`
+  - success: `204 No Content`
+- `GET /snapshot`
+  - returns a binary snapshot of the current local node state
+- `POST /restore`
+  - request body: raw snapshot bytes previously created by `GET /snapshot`
+  - success: `204 No Content`
+- `GET /healthz`
+  - success: `200 OK`
+  - response body: `ok`
+
+### Cluster Debug Endpoints
+
+- `GET /cluster/membership`
+  - returns the local node view of cluster membership, shard count, and replication factor
+- `GET /cluster/route/{key}`
+  - returns the shard route for a key, including the leader and follower replicas
+
+## Phase 2 Notes
 
 The current Phase 2 layer is intentionally simple:
 
@@ -152,15 +189,59 @@ The current Phase 2 layer is intentionally simple:
 - replication is best-effort and synchronous
 - snapshot / restore is currently node-local administration, not a cluster-wide consistent snapshot
 
-This is a useful abstraction layer for Phase 3, but it is not a consensus system yet.
+This is a useful abstraction layer for a later Raft phase, but it is not a consensus system yet.
 
-## Limitations
+## Benchmarking
 
-- there is no Raft or quorum logic yet
-- replication can become inconsistent if a follower is unavailable during a write
-- membership is static and configured at startup
-- there is no TTL eviction yet
-- restoring a snapshot in cluster mode only replaces the local node state
+Benchmark artifacts are generated under `docs/bench/`:
+
+- `docs/bench/results.csv`
+- `docs/bench/results.json`
+- `docs/bench/throughput.svg`
+- `docs/bench/latency-p95.svg`
+
+Re-generate them with:
+
+```bash
+go run ./cmd/tinykvbench \
+  -duration 2s \
+  -concurrency 1,8,32 \
+  -value-size 256 \
+  -output-dir docs/bench
+```
+
+If you only want to redraw the charts from an existing benchmark run:
+
+```bash
+go run ./cmd/tinykvbench \
+  -render-from docs/bench/results.json \
+  -output-dir docs/bench
+```
+
+Methodology:
+
+- benchmark target: single-node TinyKV HTTP API
+- transport: in-process `httptest` HTTP server and `net/http` client
+- value size: `256B`
+- preload set: `20,000` keys for read and mixed workloads
+- write durability mode: default `SyncOnWrite=false`
+- duration per case: `2s`
+- concurrency levels: `1`, `8`, `32`
+- environment: macOS `15.7.3`, `arm64`, Go `1.26.0`, `8` logical CPUs
+
+### Result Summary
+
+| Workload | Concurrency | Throughput (ops/s) | p50 (ms) | p95 (ms) | p99 (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| PUT | 1 | 12,494.0 | 0.078 | 0.092 | 0.144 |
+| PUT | 8 | 44,482.5 | 0.169 | 0.287 | 0.410 |
+| PUT | 32 | 47,384.0 | 0.623 | 1.038 | 1.888 |
+| GET | 1 | 12,589.0 | 0.077 | 0.093 | 0.141 |
+| GET | 8 | 44,544.5 | 0.165 | 0.295 | 0.455 |
+| GET | 32 | 47,990.0 | 0.622 | 1.151 | 1.891 |
+| MIXED 80/20 | 1 | 12,243.0 | 0.078 | 0.095 | 0.155 |
+| MIXED 80/20 | 8 | 42,062.0 | 0.169 | 0.305 | 0.518 |
+| MIXED 80/20 | 32 | 48,316.5 | 0.624 | 1.026 | 1.816 |
 
 ## Testing
 
@@ -169,9 +250,15 @@ go test ./...
 go test -race ./...
 ```
 
-## Next Steps
+## Current Limitations
 
-Recommended next implementation order:
+- there is no Raft or quorum logic yet
+- replication can become inconsistent if a follower is unavailable during a write
+- membership is static and configured at startup
+- there is no TTL eviction yet
+- restoring a snapshot in cluster mode only replaces the local node state
+
+## Next Steps
 
 1. TTL
 2. stronger cluster write guarantees

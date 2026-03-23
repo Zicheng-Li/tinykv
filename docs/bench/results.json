@@ -1,0 +1,115 @@
+{
+  "generated_at": "2026-03-22T21:12:58-04:00",
+  "duration": "2s",
+  "concurrency": [
+    1,
+    8,
+    32
+  ],
+  "value_size_bytes": 256,
+  "go_version": "go1.26.0",
+  "os": "darwin",
+  "arch": "arm64",
+  "cpus": 8,
+  "cases": [
+    {
+      "workload": "PUT",
+      "concurrency": 1,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 24988,
+      "throughput_ops": 12494,
+      "p50_ms": 0.078042,
+      "p95_ms": 0.09225,
+      "p99_ms": 0.144375
+    },
+    {
+      "workload": "PUT",
+      "concurrency": 8,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 88965,
+      "throughput_ops": 44482.5,
+      "p50_ms": 0.168958,
+      "p95_ms": 0.287458,
+      "p99_ms": 0.41
+    },
+    {
+      "workload": "PUT",
+      "concurrency": 32,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 94768,
+      "throughput_ops": 47384,
+      "p50_ms": 0.623042,
+      "p95_ms": 1.038125,
+      "p99_ms": 1.88775
+    },
+    {
+      "workload": "GET",
+      "concurrency": 1,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 25178,
+      "throughput_ops": 12589,
+      "p50_ms": 0.076875,
+      "p95_ms": 0.093334,
+      "p99_ms": 0.140833
+    },
+    {
+      "workload": "GET",
+      "concurrency": 8,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 89089,
+      "throughput_ops": 44544.5,
+      "p50_ms": 0.165167,
+      "p95_ms": 0.295125,
+      "p99_ms": 0.455292
+    },
+    {
+      "workload": "GET",
+      "concurrency": 32,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 95980,
+      "throughput_ops": 47990,
+      "p50_ms": 0.622333,
+      "p95_ms": 1.150708,
+      "p99_ms": 1.891458
+    },
+    {
+      "workload": "MIXED_80_20",
+      "concurrency": 1,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 24486,
+      "throughput_ops": 12243,
+      "p50_ms": 0.078084,
+      "p95_ms": 0.094917,
+      "p99_ms": 0.1555
+    },
+    {
+      "workload": "MIXED_80_20",
+      "concurrency": 8,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 84124,
+      "throughput_ops": 42062,
+      "p50_ms": 0.169417,
+      "p95_ms": 0.305167,
+      "p99_ms": 0.518083
+    },
+    {
+      "workload": "MIXED_80_20",
+      "concurrency": 32,
+      "value_size_bytes": 256,
+      "duration_ms": 2000,
+      "operations": 96633,
+      "throughput_ops": 48316.5,
+      "p50_ms": 0.624458,
+      "p95_ms": 1.025959,
+      "p99_ms": 1.816458
+    }
+  ]
+}
