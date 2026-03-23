@@ -8,7 +8,6 @@ import (
 const (
 	recordTypePut byte = 1
 	recordTypeDel byte = 2
-
 	recordHeaderSize = 13 // crc32(4) + type(1) + keyLen(4) + valLen(4)
 )
 

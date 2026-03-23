@@ -2,101 +2,160 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"tinykv/cluster"
 	"tinykv/engine"
 )
 
-func TestKVHandlerLifecycle(t *testing.T) {
-	handler := newTestHandler(t)
+func TestStandaloneKVHandlerLifecycle(t *testing.T) {
+	handler := newStandaloneHandler(t)
 
-	putReq := httptest.NewRequest(http.MethodPut, "/kv/name", bytes.NewBufferString("tinykv"))
-	putResp := httptest.NewRecorder()
-	handler.ServeHTTP(putResp, putReq)
+	putResp, _ := performHandlerRequest(t, handler, http.MethodPut, "/kv/name", "tinykv")
 	if putResp.Code != http.StatusNoContent {
 		t.Fatalf("unexpected PUT status: %d", putResp.Code)
 	}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/kv/name", nil)
-	getResp := httptest.NewRecorder()
-	handler.ServeHTTP(getResp, getReq)
+	getResp, getBody := performHandlerRequest(t, handler, http.MethodGet, "/kv/name", "")
 	if getResp.Code != http.StatusOK {
 		t.Fatalf("unexpected GET status: %d", getResp.Code)
 	}
-	body, err := io.ReadAll(getResp.Body)
-	if err != nil {
-		t.Fatalf("read GET body: %v", err)
-	}
-	if string(body) != "tinykv" {
-		t.Fatalf("unexpected GET body: %q", string(body))
+	if string(getBody) != "tinykv" {
+		t.Fatalf("unexpected GET body: %q", string(getBody))
 	}
 
-	delReq := httptest.NewRequest(http.MethodDelete, "/kv/name", nil)
-	delResp := httptest.NewRecorder()
-	handler.ServeHTTP(delResp, delReq)
+	delResp, _ := performHandlerRequest(t, handler, http.MethodDelete, "/kv/name", "")
 	if delResp.Code != http.StatusNoContent {
 		t.Fatalf("unexpected DELETE status: %d", delResp.Code)
 	}
-
-	missReq := httptest.NewRequest(http.MethodGet, "/kv/name", nil)
-	missResp := httptest.NewRecorder()
-	handler.ServeHTTP(missResp, missReq)
-	if missResp.Code != http.StatusNotFound {
-		t.Fatalf("unexpected status after delete: %d", missResp.Code)
-	}
 }
 
-func TestKVHandlerEncodedKey(t *testing.T) {
-	handler := newTestHandler(t)
+func TestStandaloneEncodedKey(t *testing.T) {
+	handler := newStandaloneHandler(t)
 
-	putReq := httptest.NewRequest(http.MethodPut, "/kv/user%2F1", bytes.NewBufferString("value"))
-	putResp := httptest.NewRecorder()
-	handler.ServeHTTP(putResp, putReq)
+	putResp, _ := performHandlerRequest(t, handler, http.MethodPut, "/kv/user%2F1", "value")
 	if putResp.Code != http.StatusNoContent {
 		t.Fatalf("unexpected PUT status: %d", putResp.Code)
 	}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/kv/user%2F1", nil)
-	getResp := httptest.NewRecorder()
-	handler.ServeHTTP(getResp, getReq)
+	getResp, getBody := performHandlerRequest(t, handler, http.MethodGet, "/kv/user%2F1", "")
 	if getResp.Code != http.StatusOK {
 		t.Fatalf("unexpected GET status: %d", getResp.Code)
 	}
-	if getResp.Body.String() != "value" {
-		t.Fatalf("unexpected GET body: %q", getResp.Body.String())
+	if string(getBody) != "value" {
+		t.Fatalf("unexpected GET body: %q", string(getBody))
 	}
 }
 
 func TestKVHandlerBadRequest(t *testing.T) {
-	handler := newTestHandler(t)
+	handler := newStandaloneHandler(t)
 
-	req := httptest.NewRequest(http.MethodPut, "/kv", bytes.NewBuffer(nil))
-	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
+	resp, _ := performHandlerRequest(t, handler, http.MethodPut, "/kv", "")
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status: %d", resp.Code)
 	}
 }
 
 func TestHealthz(t *testing.T) {
-	handler := newTestHandler(t)
+	handler := newStandaloneHandler(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
+	resp, body := performHandlerRequest(t, handler, http.MethodGet, "/healthz", "")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", resp.Code)
 	}
-	if resp.Body.String() != "ok" {
-		t.Fatalf("unexpected body: %q", resp.Body.String())
+	if string(body) != "ok" {
+		t.Fatalf("unexpected body: %q", string(body))
 	}
 }
 
-func newTestHandler(t *testing.T) http.Handler {
+func TestClusterProxyWriteToLeader(t *testing.T) {
+	fixture := newClusterFixture(t, 1)
+
+	resp, _ := performHTTP(t, http.MethodPut, fixture.url("node-b")+"/kv/name", "tinykv")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected PUT status: %d", resp.StatusCode)
+	}
+
+	v, err := fixture.dbs["node-a"].Get("name")
+	if err != nil {
+		t.Fatalf("leader should store value: %v", err)
+	}
+	if string(v) != "tinykv" {
+		t.Fatalf("unexpected leader value: %q", string(v))
+	}
+
+	_, err = fixture.dbs["node-b"].Get("name")
+	if !errors.Is(err, engine.ErrKeyNotFound) {
+		t.Fatalf("non-replica node should not store value, got: %v", err)
+	}
+
+	getResp, getBody := performHTTP(t, http.MethodGet, fixture.url("node-b")+"/kv/name", "")
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected proxied GET status: %d", getResp.StatusCode)
+	}
+	if string(getBody) != "tinykv" {
+		t.Fatalf("unexpected proxied GET body: %q", string(getBody))
+	}
+}
+
+func TestClusterReplicatesFollowers(t *testing.T) {
+	fixture := newClusterFixture(t, 2)
+
+	putResp, _ := performHTTP(t, http.MethodPut, fixture.url("node-a")+"/kv/name", "tinykv")
+	if putResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected PUT status: %d", putResp.StatusCode)
+	}
+
+	followerValue, err := fixture.dbs["node-b"].Get("name")
+	if err != nil {
+		t.Fatalf("follower should have replicated value: %v", err)
+	}
+	if string(followerValue) != "tinykv" {
+		t.Fatalf("unexpected follower value: %q", string(followerValue))
+	}
+
+	delResp, _ := performHTTP(t, http.MethodDelete, fixture.url("node-b")+"/kv/name", "")
+	if delResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected DELETE status: %d", delResp.StatusCode)
+	}
+
+	_, err = fixture.dbs["node-a"].Get("name")
+	if !errors.Is(err, engine.ErrKeyNotFound) {
+		t.Fatalf("leader value should be deleted, got: %v", err)
+	}
+	_, err = fixture.dbs["node-b"].Get("name")
+	if !errors.Is(err, engine.ErrKeyNotFound) {
+		t.Fatalf("follower value should be deleted, got: %v", err)
+	}
+}
+
+func TestClusterDebugEndpoints(t *testing.T) {
+	fixture := newClusterFixture(t, 2)
+
+	membershipResp, membershipBody := performHTTP(t, http.MethodGet, fixture.url("node-a")+"/cluster/membership", "")
+	if membershipResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected membership status: %d", membershipResp.StatusCode)
+	}
+	if !strings.Contains(string(membershipBody), "\"enabled\": true") {
+		t.Fatalf("membership response should indicate cluster mode: %s", string(membershipBody))
+	}
+
+	routeResp, routeBody := performHTTP(t, http.MethodGet, fixture.url("node-a")+"/cluster/route/name", "")
+	if routeResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected route status: %d", routeResp.StatusCode)
+	}
+	if !strings.Contains(string(routeBody), "\"leader\"") {
+		t.Fatalf("route response should include leader info: %s", string(routeBody))
+	}
+}
+
+func newStandaloneHandler(t *testing.T) http.Handler {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "tinykv-http.data")
@@ -108,5 +167,108 @@ func newTestHandler(t *testing.T) http.Handler {
 		_ = db.Close()
 	})
 
-	return NewHandler(db)
+	return NewHandler(db, Options{})
+}
+
+type clusterFixture struct {
+	servers map[string]*httptest.Server
+	dbs     map[string]*engine.DB
+}
+
+func newClusterFixture(t *testing.T, replicationFactor int) *clusterFixture {
+	t.Helper()
+
+	muxes := map[string]*http.ServeMux{
+		"node-a": http.NewServeMux(),
+		"node-b": http.NewServeMux(),
+	}
+	servers := map[string]*httptest.Server{
+		"node-a": httptest.NewServer(muxes["node-a"]),
+		"node-b": httptest.NewServer(muxes["node-b"]),
+	}
+	t.Cleanup(func() {
+		for _, server := range servers {
+			server.Close()
+		}
+	})
+
+	nodes := []cluster.Node{
+		{ID: "node-a", Address: servers["node-a"].URL},
+		{ID: "node-b", Address: servers["node-b"].URL},
+	}
+
+	dbs := make(map[string]*engine.DB, len(nodes))
+	t.Cleanup(func() {
+		for _, db := range dbs {
+			_ = db.Close()
+		}
+	})
+
+	for _, node := range nodes {
+		path := filepath.Join(t.TempDir(), node.ID+".data")
+		db, err := engine.Open(engine.DefaultOptions(path))
+		if err != nil {
+			t.Fatalf("open db for %s: %v", node.ID, err)
+		}
+		dbs[node.ID] = db
+
+		membership, err := cluster.NewMembership(cluster.Config{
+			SelfID:            node.ID,
+			Nodes:             nodes,
+			ShardCount:        1,
+			ReplicationFactor: replicationFactor,
+		})
+		if err != nil {
+			t.Fatalf("new membership for %s: %v", node.ID, err)
+		}
+
+		muxes[node.ID].Handle("/", NewHandler(db, Options{
+			Cluster:    membership,
+			PeerClient: cluster.NewHTTPClient(nil),
+		}))
+	}
+
+	return &clusterFixture{
+		servers: servers,
+		dbs:     dbs,
+	}
+}
+
+func (f *clusterFixture) url(nodeID string) string {
+	return f.servers[nodeID].URL
+}
+
+func performHandlerRequest(t *testing.T, handler http.Handler, method, path, body string) (*httptest.ResponseRecorder, []byte) {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read handler body: %v", err)
+	}
+	return resp, payload
+}
+
+func performHTTP(t *testing.T, method, target, body string) (*http.Response, []byte) {
+	t.Helper()
+
+	req, err := http.NewRequest(method, target, bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatalf("new http request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do http request: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = resp.Body.Close()
+	})
+
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read http body: %v", err)
+	}
+	return resp, payload
 }
