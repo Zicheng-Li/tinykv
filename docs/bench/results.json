@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-22T21:12:58-04:00",
+  "generated_at": "2026-03-22T22:15:30-04:00",
   "duration": "2s",
   "concurrency": [
     1,
@@ -17,99 +17,99 @@
       "concurrency": 1,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 24988,
-      "throughput_ops": 12494,
-      "p50_ms": 0.078042,
-      "p95_ms": 0.09225,
-      "p99_ms": 0.144375
+      "operations": 24451,
+      "throughput_ops": 12225.5,
+      "p50_ms": 0.078583,
+      "p95_ms": 0.095917,
+      "p99_ms": 0.154125
     },
     {
       "workload": "PUT",
       "concurrency": 8,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 88965,
-      "throughput_ops": 44482.5,
-      "p50_ms": 0.168958,
-      "p95_ms": 0.287458,
-      "p99_ms": 0.41
+      "operations": 87189,
+      "throughput_ops": 43594.5,
+      "p50_ms": 0.169166,
+      "p95_ms": 0.294125,
+      "p99_ms": 0.460791
     },
     {
       "workload": "PUT",
       "concurrency": 32,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 94768,
-      "throughput_ops": 47384,
-      "p50_ms": 0.623042,
-      "p95_ms": 1.038125,
-      "p99_ms": 1.88775
+      "operations": 97219,
+      "throughput_ops": 48609.5,
+      "p50_ms": 0.622667,
+      "p95_ms": 0.961792,
+      "p99_ms": 1.767584
     },
     {
       "workload": "GET",
       "concurrency": 1,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 25178,
-      "throughput_ops": 12589,
-      "p50_ms": 0.076875,
-      "p95_ms": 0.093334,
-      "p99_ms": 0.140833
+      "operations": 25667,
+      "throughput_ops": 12833.5,
+      "p50_ms": 0.076458,
+      "p95_ms": 0.08925,
+      "p99_ms": 0.121
     },
     {
       "workload": "GET",
       "concurrency": 8,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 89089,
-      "throughput_ops": 44544.5,
-      "p50_ms": 0.165167,
-      "p95_ms": 0.295125,
-      "p99_ms": 0.455292
+      "operations": 90218,
+      "throughput_ops": 45109,
+      "p50_ms": 0.164166,
+      "p95_ms": 0.287917,
+      "p99_ms": 0.434083
     },
     {
       "workload": "GET",
       "concurrency": 32,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 95980,
-      "throughput_ops": 47990,
-      "p50_ms": 0.622333,
-      "p95_ms": 1.150708,
-      "p99_ms": 1.891458
+      "operations": 97547,
+      "throughput_ops": 48773.5,
+      "p50_ms": 0.621625,
+      "p95_ms": 1.050667,
+      "p99_ms": 1.744542
     },
     {
       "workload": "MIXED_80_20",
       "concurrency": 1,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 24486,
-      "throughput_ops": 12243,
-      "p50_ms": 0.078084,
-      "p95_ms": 0.094917,
-      "p99_ms": 0.1555
+      "operations": 25393,
+      "throughput_ops": 12696.5,
+      "p50_ms": 0.077291,
+      "p95_ms": 0.091042,
+      "p99_ms": 0.120833
     },
     {
       "workload": "MIXED_80_20",
       "concurrency": 8,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 84124,
-      "throughput_ops": 42062,
-      "p50_ms": 0.169417,
-      "p95_ms": 0.305167,
-      "p99_ms": 0.518083
+      "operations": 89054,
+      "throughput_ops": 44527,
+      "p50_ms": 0.166458,
+      "p95_ms": 0.284792,
+      "p99_ms": 0.428625
     },
     {
       "workload": "MIXED_80_20",
       "concurrency": 32,
       "value_size_bytes": 256,
       "duration_ms": 2000,
-      "operations": 96633,
-      "throughput_ops": 48316.5,
-      "p50_ms": 0.624458,
-      "p95_ms": 1.025959,
-      "p99_ms": 1.816458
+      "operations": 97721,
+      "throughput_ops": 48860.5,
+      "p50_ms": 0.616666,
+      "p95_ms": 1.02325,
+      "p99_ms": 1.815042
     }
   ]
 }
