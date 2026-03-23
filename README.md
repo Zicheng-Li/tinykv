@@ -14,7 +14,7 @@ Current scope:
 - Storage engine: `PUT / GET / DELETE`, WAL recovery, compaction, concurrent access safety, snapshot / restore
 - Service layer: HTTP API for KV operations plus cluster inspection endpoints
 - Cluster layer: static membership, shard routing, leader/follower abstraction, node-to-node forwarding, best-effort replication
-- Performance snapshot: up to `48.3k ops/s` in the current single-node HTTP benchmark with `p95` latency near `1.0-1.15 ms` at concurrency `32`
+- Performance snapshot: up to `48.3k ops/s` in the current single-node HTTP benchmark with `p95` latency near `1.0-1.1 ms` at concurrency `32`
 
 ## Benchmark Snapshot
 
